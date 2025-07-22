@@ -1,0 +1,182 @@
+---
+title: "riparian"
+author: "Inyo County Water Department"
+format: html
+editor: visual
+---
+
+from staff: Can you provide a bit of help with some plotting code? I am working on plotting the tree establishment age data as a histogram by strata (on river, off river, on river with fire, etc) and I’d like to overlay this plot with a hydrograph (or hydrographs).
+
+There are two hydro datasets, one is OR flow from various stations (PV, BGP, Tinemaha, Charlie’s butte, Keeler Bridge), and one is just OV runoff (i.e. the ‘great table’).
+
+
+HISTOGRAM
+Using the dataframe ‘cored_trees_plt.csv’, here is the code that is working to plot the stacked histograms; there are vertical lines for high water years in this version but can be removed if annoying to look at (and this is still a draft but you’ll get the idea):
+```{r}
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(tidyr)
+library(lubridate)
+library(here)
+# Load the data
+cored_trees_plt <- read_csv(here("data","cored_trees_plt.csv"))
+
+
+```
+
+
+```{r}
+# histogram by establishment year (# trees per year)
+
+#---------------------------------
+
+# with vertical lines for high runoff years > 150% of normal (except 1980=>149%, 2006=>148%, 2011=>142% of normal)
+
+ 
+
+ggplot(cored_trees_plt, aes(x = comb_date, fill = strata_clone)) +
+
+  geom_histogram(binwidth=1, position = "stack", colour = "black") +
+
+  scale_x_continuous(breaks=seq(0,2018,1)) +
+
+  theme_light() +
+
+  labs(x = "Recruitment year") +
+
+  facet_grid(strata_clone ~ .)  +
+
+  theme(axis.text.x = element_text(angle = 90, size = 6, hjust = 0 )) +
+
+  scale_fill_manual(values = c("brown4", "turquoise4", "darkorange1", "gold", "blue2")) +
+
+  geom_vline(aes(xintercept=1969), color="grey40") +
+
+  annotate("text", x = 1969, y = 20, label = "1969", vjust = 0.5, hjust = 1.1, size = 3.5, color = "black") +
+
+  geom_vline(aes(xintercept=1978), color="grey40") +
+
+  geom_vline(aes(xintercept=1980), color="grey40") +
+
+  annotate("text", x = 1982, y = 20, label = "1980", vjust = 0.5, hjust = 1.1, size = 3.5, color = "black")+
+
+  geom_vline(aes(xintercept=1983), color="grey40") +
+
+  geom_vline(aes(xintercept=1986), color="grey40") +
+
+  geom_vline(aes(xintercept=1995), color="grey40") +
+
+  geom_vline(aes(xintercept=1998), color="grey40") +
+
+  geom_vline(aes(xintercept=2006), color="grey40") +
+
+  geom_vline(aes(xintercept=2011), color="grey40")
+
+```
+Hydrographs
+Flows
+Using the dataframe ‘cored_trees_hy_test.csv” I can plot a multiple line hydrograph by station:
+
+ 
+```{r}
+
+cored_trees_hy_test <- read_csv(here("data","cored_trees_hy_test.csv"))
+ggplot() +
+
+  geom_line(data = cored_trees_hy_test, aes(x = comb_date, y = flow_acft, color = station))
+
+ 
+```
+
+OV runoff
+Using the dataframe ‘cored_trees_run.csv’ I can also plot a single line hydrograph by station:
+
+```{r}
+cored_trees_run <- read_csv(here("data","cored_trees_run.csv"))
+
+ggplot(cored_trees_run) +
+
+    geom_line(aes(x = comb_date, y = ovr_acft))
+
+ 
+
+ 
+```
+
+Combined graph
+But I can’t seem to get them all to plot together, I have tried a number of options mostly by adding a histogram and a line graph – or a bar graph (geom_bar), also attempted to add a second axis (via sec.axis – which I am trying to research but don’t understand yet); something like this:
+
+
+```{r}
+
+
+ggplot(cored_trees_hy_test) +
+
+  geom_histogram(aes(x = comb_date, fill = strata_clone, binwidth=1, position = "stack", colour = "black")) +
+
+  geom_line(aes(x = comb_date, y = ovr_acft)) +
+
+  scale_x_continuous(breaks=seq(0,2018,1)) +
+
+  scale_y_continuous(sec.axis = sec_axis(~ .))
+
+  theme_light() +
+
+  labs(x = "Recruitment year") +
+
+  facet_grid(strata_clone ~ .)  +
+
+  theme(axis.text.x = element_text(angle = 90, size = 6, hjust = 0 )) +
+
+  scale_fill_manual(values = c("brown4", "turquoise4", "darkorange1", "gold", "blue2"))
+
+  
+# glimpse(cored_trees_hy_test)  
+```
+
+with flow data
+with runoff data
+
+```{r}
+# Create the combined plot with flow data
+ggplot() +
+  geom_histogram(data = cored_trees_plt, aes(x = comb_date, fill = strata_clone), 
+                 binwidth = 1, position = "stack", colour = "black") +
+  geom_line(data = cored_trees_hy_test, aes(x = comb_date, y = flow_acft / 1000, color = station), size = 1) +
+  scale_x_continuous(breaks = seq(0, 2018, 1)) +
+  scale_y_continuous(name = "Number of Trees", 
+                     sec.axis = sec_axis(~ . * 1000, name = "Flow (acft)")) +
+  theme_light() +
+  labs(x = "Recruitment year") +
+  facet_grid(strata_clone ~ .) +
+  theme(axis.text.x = element_text(angle = 90, size = 6, hjust = 0)) +
+  scale_fill_manual(values = c("brown4", "turquoise4", "darkorange1", "gold", "blue2"))
+
+```
+
+```{r}
+ggplot() +
+  # Histogram of tree establishment ages
+  geom_histogram(data = cored_trees_run, aes(x = comb_date, fill = strata_clone), 
+                 binwidth = 1, position = "stack", colour = "black") +
+  # Hydrograph of total runoff
+  geom_line(data = cored_trees_run, aes(x = comb_date, y = ovr_acft), size = 1, color = "blue") +
+  # X-axis settings
+  scale_x_continuous(breaks = seq(0, 2018, 1)) +
+  # Primary y-axis for number of trees and secondary y-axis for total runoff
+  scale_y_continuous(name = "Number of Trees", limits = c(0, 20), 
+                     sec.axis = sec_axis(~ ., name = "Total Runoff (acft)")) +
+  # Light theme for the plot
+  theme_light() +
+  # Labels for the plot
+  labs(x = "Recruitment year") +
+  # Facet grid for strata_clone
+  facet_grid(strata_clone ~ .) +
+  # Rotate x-axis labels for readability
+  theme(axis.text.x = element_text(angle = 90, size = 6, hjust = 1)) +
+  # Custom colors for histogram bars
+  scale_fill_manual(values = c("brown4", "turquoise4", "darkorange1", "gold", "blue2"))
+
+```
+
