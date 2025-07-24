@@ -1,182 +1,221 @@
 ---
-title: "riparian"
+title: "Riparian Hydro‑Ecology"
 author: "Inyo County Water Department"
-format: html
-editor: visual
+# -----------------------------------------------------------
+#  HTML output with collapsible code chunks
+# -----------------------------------------------------------
+format:
+  html:
+    code-fold: true          # adds the accordion
+    # code-summary: "Show code"
+    toc: false               # drop if you want a table‑of‑contents
+    self-contained: true     # <‑ makes the file one single .html (easy e‑mail)
+
+# -----------------------------------------------------------
+#  Execution defaults for every chunk
+# -----------------------------------------------------------
+execute:
+  echo: true                 # show code
+  warning: false             # hide knitr warnings (optional)
+  message: false             # hide package startup messages (optional)
 ---
 
-from staff: Can you provide a bit of help with some plotting code? I am working on plotting the tree establishment age data as a histogram by strata (on river, off river, on river with fire, etc) and I’d like to overlay this plot with a hydrograph (or hydrographs).
+::: {.callout-note collapse="true" title="Secondary‑axis: why the hydrograph was flat & the two‑line fix"}
+**Original code flattened the hydrograph**
+It's a limitation of the ggplot2 package by design.
+**ggplot2** deliberately discourages dual‑axis plots.
+Hadley Wickham’s design rationale is that a figure should have **one visual scale per aesthetic**; two different units mapped to the same aesthetic (y‑position) can mislead. If dual axes are unavoidable, the relationship **must be linear** so viewers can mentally transform one to the other.
 
-There are two hydro datasets, one is OR flow from various stations (PV, BGP, Tinemaha, Charlie’s butte, Keeler Bridge), and one is just OV runoff (i.e. the ‘great table’).
+Because of that philosophy, ggplot2 offers only a *re‑labelling* tool
+(`sec_axis`), **not** a second independent scale.  
+Hence the manual work you have to do with when forcing ggplot to do this:
+
+1. Calculate a scale factor *k* so the secondary data fit on the primary axis.  
+2. Multiply the data in the layer (`flow_acft * k`).  
+3. Provide the inverse transformation (`~ . / k`) in `sec.axis`.  
+4. Format tick labels yourself (`scales::comma_format()`).
+
+It's easier to do this in python - letting you call
+`ax.twinx()` and be done, but in ggplot2 the extra arithmetic keeps the core
+grammar simple and guards against misleading charts—at the cost of annoyances
+and manual work when forcing it to do dual axes.
+
+* Before, the histogram’s axis stopped around 15 trees, so flows > 100 000 acre‑ft were squeezed into 0 – 15 so the line looked flat.
+
+In a nutshell, you have to first rescale the flow values
+
+```r
+k <- max(tree_cnt$n_trees) / max(flow_df$flow_acft)
+geom_line(aes(y = flow_acft * k, colour = station))
+```
+
+Then undo that scaling on the secondary axis
+
+```r
+scale_y_continuous(
+  name     = "Number of Trees",
+  sec.axis = sec_axis(
+    ~ . / k,
+    name   = "Flow (acre‑ft)",
+    labels = scales::comma_format()
+  )
+)
+```
+
+here's a reproducible code below. Note - I wrote two functions which can be tweaked and called more easily than long copy-pasta. Hope this helps!
+
+:::
 
 
-HISTOGRAM
-Using the dataframe ‘cored_trees_plt.csv’, here is the code that is working to plot the stacked histograms; there are vertical lines for high water years in this version but can be removed if annoying to look at (and this is still a draft but you’ll get the idea):
-```{r}
-library(ggplot2)
-library(dplyr)
-library(readr)
-library(tidyr)
-library(lubridate)
+```{r libraries, 'code-summary'= "libraries"}
+library(tidyverse)
 library(here)
-# Load the data
-cored_trees_plt <- read_csv(here("data","cored_trees_plt.csv"))
+library(scales)
+```
+
+```{r functions, 'code-summary'="functions"}
+#────────────────────────────────────────────────────────────
+# 1) multi‑station flow
+#────────────────────────────────────────────────────────────
+plot_tree_vs_flow <- function(tree_df,
+                              flow_df,
+                              binwidth   = 1,
+                              fill_cols  = c(off      = "brown4",
+                                             on       = "turquoise4",
+                                             onfire   = "darkorange1",
+                                             `onfire C` = "gold",
+                                             onsuppl  = "blue2")) {
+
+  ## histogram counts ---------------------------------------------------------
+  tree_cnt <- tree_df %>%
+    count(strata_clone, comb_date, name = "n_trees")
+
+  facets  <- unique(tree_cnt$strata_clone)
+  # min_yr  <- min(tree_cnt$comb_date, na.rm = TRUE)
+  min_yr  <- 1885
+  # max_yr  <- max(tree_cnt$comb_date, na.rm = TRUE)
+  max_yr <- 2025
+
+  ## flow data (drop stray strata column if present) --------------------------
+  flow_base <- flow_df %>%
+    select(-any_of("strata_clone")) %>%
+    mutate(comb_date = as.integer(comb_date))
+
+  k <- max(tree_cnt$n_trees, na.rm = TRUE) /
+       max(flow_base$flow_acft, na.rm = TRUE)
+
+  flow_plot <- flow_base %>%
+    mutate(flow_scaled = flow_acft * k) %>%
+    tidyr::crossing(strata_clone = facets)
+
+  ## figure -------------------------------------------------------------------
+  ggplot() +
+    geom_col(data = tree_cnt,
+             aes(comb_date, n_trees, fill = strata_clone),
+             width = binwidth, colour = "black") +
+
+    geom_line(data = flow_plot,
+              aes(comb_date, flow_scaled, colour = station),
+              size = .7, alpha = .8) +
+
+    scale_y_continuous(
+      name     = "Number of Trees",
+      sec.axis = sec_axis(~ . / k,
+                          name   = "Flow (acre‑ft)",
+                          labels = comma_format())
+    ) +
+    scale_x_continuous(
+      breaks       = seq(min_yr, max_yr, by = 5),  # label every 5 yrs
+      minor_breaks = seq(min_yr, max_yr, by = 1),   # grid every year
+      name         = "Recruitment year",
+      labels       = number_format(accuracy = 1)
+    ) +
+    scale_fill_manual(values = fill_cols, name = NULL) +
+    scale_colour_brewer(palette = "Dark2", name = "Station") +
+    facet_grid(strata_clone ~ .) +
+    theme_light() +
+    theme(axis.text.x  = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 6),
+          legend.position = "bottom")
+}
+
+#────────────────────────────────────────────────────────────
+# 2) OV runoff
+#────────────────────────────────────────────────────────────
+plot_tree_vs_runoff <- function(tree_df,
+                                runoff_df,
+                                binwidth   = 1,
+                                fill_cols  = c(off      = "brown4",
+                                               on       = "turquoise4",
+                                               onfire   = "darkorange1",
+                                               `onfire C` = "gold",
+                                               onsuppl  = "blue2")) {
+
+  tree_cnt <- tree_df %>%
+    count(strata_clone, comb_date, name = "n_trees")
+
+  facets  <- unique(tree_cnt$strata_clone)
+  # min_yr  <- min(tree_cnt$comb_date, na.rm = TRUE)
+  min_yr  <- 1885
+  # max_yr  <- max(tree_cnt$comb_date, na.rm = TRUE)
+  max_yr <- 2025
+
+  runoff_base <- runoff_df %>%
+    select(-any_of("strata_clone")) %>%
+    mutate(comb_date = as.integer(comb_date))
+
+  k <- max(tree_cnt$n_trees, na.rm = TRUE) /
+       max(runoff_base$ovr_acft, na.rm = TRUE)
+
+  runoff_plot <- runoff_base %>%
+    mutate(run_scaled = ovr_acft * k) %>%
+    tidyr::crossing(strata_clone = facets)
+
+  ggplot() +
+    geom_col(data = tree_cnt,
+             aes(comb_date, n_trees, fill = strata_clone),
+             width = binwidth, colour = "black") +
+
+    geom_line(data = runoff_plot,
+              aes(comb_date, run_scaled),
+              colour = "black", size = .9) +
+
+    scale_y_continuous(
+      name     = "Number of Trees",
+      sec.axis = sec_axis(~ . / k,
+                          name   = "Total Runoff (acre‑ft)",
+                          labels = comma_format())
+    ) +
+    scale_x_continuous(
+      breaks       = seq(min_yr, max_yr, by = 5),
+      minor_breaks = seq(min_yr, max_yr, by = 1),
+      name         = "Recruitment year",
+      labels       = number_format(accuracy = 1)
+    ) +
+    scale_fill_manual(values = fill_cols, name = NULL) +
+    facet_grid(strata_clone ~ .) +
+    theme_light() +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 6),
+          legend.position = "bottom")
+}
+
 
 
 ```
 
-
-```{r}
-# histogram by establishment year (# trees per year)
-
-#---------------------------------
-
-# with vertical lines for high runoff years > 150% of normal (except 1980=>149%, 2006=>148%, 2011=>142% of normal)
-
- 
-
-ggplot(cored_trees_plt, aes(x = comb_date, fill = strata_clone)) +
-
-  geom_histogram(binwidth=1, position = "stack", colour = "black") +
-
-  scale_x_continuous(breaks=seq(0,2018,1)) +
-
-  theme_light() +
-
-  labs(x = "Recruitment year") +
-
-  facet_grid(strata_clone ~ .)  +
-
-  theme(axis.text.x = element_text(angle = 90, size = 6, hjust = 0 )) +
-
-  scale_fill_manual(values = c("brown4", "turquoise4", "darkorange1", "gold", "blue2")) +
-
-  geom_vline(aes(xintercept=1969), color="grey40") +
-
-  annotate("text", x = 1969, y = 20, label = "1969", vjust = 0.5, hjust = 1.1, size = 3.5, color = "black") +
-
-  geom_vline(aes(xintercept=1978), color="grey40") +
-
-  geom_vline(aes(xintercept=1980), color="grey40") +
-
-  annotate("text", x = 1982, y = 20, label = "1980", vjust = 0.5, hjust = 1.1, size = 3.5, color = "black")+
-
-  geom_vline(aes(xintercept=1983), color="grey40") +
-
-  geom_vline(aes(xintercept=1986), color="grey40") +
-
-  geom_vline(aes(xintercept=1995), color="grey40") +
-
-  geom_vline(aes(xintercept=1998), color="grey40") +
-
-  geom_vline(aes(xintercept=2006), color="grey40") +
-
-  geom_vline(aes(xintercept=2011), color="grey40")
-
-```
-Hydrographs
-Flows
-Using the dataframe ‘cored_trees_hy_test.csv” I can plot a multiple line hydrograph by station:
-
- 
-```{r}
-
-cored_trees_hy_test <- read_csv(here("data","cored_trees_hy_test.csv"))
-ggplot() +
-
-  geom_line(data = cored_trees_hy_test, aes(x = comb_date, y = flow_acft, color = station))
-
- 
+```{r load-data, 'code-summary'="load-data"}
+## load data
+trees   <- read_csv(here("data","cored_trees_plt.csv"),  show_col_types = FALSE)
+flows   <- read_csv(here("data","cored_trees_hy_test.csv"), show_col_types = FALSE)
+runoff  <- read_csv(here("data","cored_trees_run.csv"), show_col_types = FALSE)
 ```
 
-OV runoff
-Using the dataframe ‘cored_trees_run.csv’ I can also plot a single line hydrograph by station:
-
-```{r}
-cored_trees_run <- read_csv(here("data","cored_trees_run.csv"))
-
-ggplot(cored_trees_run) +
-
-    geom_line(aes(x = comb_date, y = ovr_acft))
-
- 
-
- 
+```{r mult-station, 'code-summary'="call-multi-station"}
+## multi‑station figure
+plot_tree_vs_flow(trees, flows)
 ```
 
-Combined graph
-But I can’t seem to get them all to plot together, I have tried a number of options mostly by adding a histogram and a line graph – or a bar graph (geom_bar), also attempted to add a second axis (via sec.axis – which I am trying to research but don’t understand yet); something like this:
-
-
-```{r}
-
-
-ggplot(cored_trees_hy_test) +
-
-  geom_histogram(aes(x = comb_date, fill = strata_clone, binwidth=1, position = "stack", colour = "black")) +
-
-  geom_line(aes(x = comb_date, y = ovr_acft)) +
-
-  scale_x_continuous(breaks=seq(0,2018,1)) +
-
-  scale_y_continuous(sec.axis = sec_axis(~ .))
-
-  theme_light() +
-
-  labs(x = "Recruitment year") +
-
-  facet_grid(strata_clone ~ .)  +
-
-  theme(axis.text.x = element_text(angle = 90, size = 6, hjust = 0 )) +
-
-  scale_fill_manual(values = c("brown4", "turquoise4", "darkorange1", "gold", "blue2"))
-
-  
-# glimpse(cored_trees_hy_test)  
-```
-
-with flow data
-with runoff data
-
-```{r}
-# Create the combined plot with flow data
-ggplot() +
-  geom_histogram(data = cored_trees_plt, aes(x = comb_date, fill = strata_clone), 
-                 binwidth = 1, position = "stack", colour = "black") +
-  geom_line(data = cored_trees_hy_test, aes(x = comb_date, y = flow_acft / 1000, color = station), size = 1) +
-  scale_x_continuous(breaks = seq(0, 2018, 1)) +
-  scale_y_continuous(name = "Number of Trees", 
-                     sec.axis = sec_axis(~ . * 1000, name = "Flow (acft)")) +
-  theme_light() +
-  labs(x = "Recruitment year") +
-  facet_grid(strata_clone ~ .) +
-  theme(axis.text.x = element_text(angle = 90, size = 6, hjust = 0)) +
-  scale_fill_manual(values = c("brown4", "turquoise4", "darkorange1", "gold", "blue2"))
+```{r tot-runoff, 'code-summary'="call-total-runoff"}
+## OV‑runoff figure
+plot_tree_vs_runoff(trees, runoff)
 
 ```
-
-```{r}
-ggplot() +
-  # Histogram of tree establishment ages
-  geom_histogram(data = cored_trees_run, aes(x = comb_date, fill = strata_clone), 
-                 binwidth = 1, position = "stack", colour = "black") +
-  # Hydrograph of total runoff
-  geom_line(data = cored_trees_run, aes(x = comb_date, y = ovr_acft), size = 1, color = "blue") +
-  # X-axis settings
-  scale_x_continuous(breaks = seq(0, 2018, 1)) +
-  # Primary y-axis for number of trees and secondary y-axis for total runoff
-  scale_y_continuous(name = "Number of Trees", limits = c(0, 20), 
-                     sec.axis = sec_axis(~ ., name = "Total Runoff (acft)")) +
-  # Light theme for the plot
-  theme_light() +
-  # Labels for the plot
-  labs(x = "Recruitment year") +
-  # Facet grid for strata_clone
-  facet_grid(strata_clone ~ .) +
-  # Rotate x-axis labels for readability
-  theme(axis.text.x = element_text(angle = 90, size = 6, hjust = 1)) +
-  # Custom colors for histogram bars
-  scale_fill_manual(values = c("brown4", "turquoise4", "darkorange1", "gold", "blue2"))
-
-```
-
