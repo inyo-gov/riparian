@@ -1,26 +1,18 @@
 ---
 title: "Riparian Hydro‑Ecology"
 author: "Inyo County Water Department"
-# -----------------------------------------------------------
-#  HTML output with collapsible code chunks
-# -----------------------------------------------------------
 format:
   html:
-    code-fold: true          # adds the accordion
-    # code-summary: "Show code"
-    toc: false               # drop if you want a table‑of‑contents
-    self-contained: true     # <‑ makes the file one single .html (easy e‑mail)
-
-# -----------------------------------------------------------
-#  Execution defaults for every chunk
-# -----------------------------------------------------------
+    code-fold: true         
+    toc: false               
+    self-contained: true     
 execute:
   echo: true                 # show code
-  warning: false             # hide knitr warnings (optional)
-  message: false             # hide package startup messages (optional)
+  warning: false             # hide knitr warnings
+  message: false             # hide package startup messages
 ---
 
-::: {.callout-note collapse="true" title="Secondary‑axis: why the hydrograph was flat & the two‑line fix"}
+::: {.callout-note collapse="true" title="Secondary‑axis: why the hydrograph was flat"}
 **Original code flattened the hydrograph**
 It's a limitation of the ggplot2 package by design.
 **ggplot2** deliberately discourages dual‑axis plots.
@@ -37,8 +29,7 @@ Hence the manual work you have to do with when forcing ggplot to do this:
 
 It's easier to do this in python - letting you call
 `ax.twinx()` and be done, but in ggplot2 the extra arithmetic keeps the core
-grammar simple and guards against misleading charts—at the cost of annoyances
-and manual work when forcing it to do dual axes.
+grammar simple and guards against misleading charts—at the cost of annoyances and manual work when forcing it to do dual axes.
 
 * Before, the histogram’s axis stopped around 15 trees, so flows > 100 000 acre‑ft were squeezed into 0 – 15 so the line looked flat.
 
@@ -62,7 +53,7 @@ scale_y_continuous(
 )
 ```
 
-here's a reproducible code below. Note - I wrote two functions which can be tweaked and called more easily than long copy-pasta. Hope this helps!
+here's a reproducible code below. Note - I wrote two functions which can be updated and called more easily than copying code over and over to iterate. Hope this helps!
 
 :::
 
@@ -104,9 +95,10 @@ plot_tree_vs_flow <- function(tree_df,
   k <- max(tree_cnt$n_trees, na.rm = TRUE) /
        max(flow_base$flow_acft, na.rm = TRUE)
 
-  flow_plot <- flow_base %>%
-    mutate(flow_scaled = flow_acft * k) %>%
-    tidyr::crossing(strata_clone = facets)
+  # flow_plot <- flow_base %>%
+  #   mutate(flow_scaled = flow_acft * k) %>%
+  #   tidyr::crossing(strata_clone = facets)
+
 
   ## figure -------------------------------------------------------------------
   ggplot() +
@@ -114,10 +106,12 @@ plot_tree_vs_flow <- function(tree_df,
              aes(comb_date, n_trees, fill = strata_clone),
              width = binwidth, colour = "black") +
 
-    geom_line(data = flow_plot,
-              aes(comb_date, flow_scaled, colour = station),
-              size = .7, alpha = .8) +
-
+    # geom_line(data = flow_plot,
+    #           aes(comb_date, flow_scaled, colour = station),
+    #           size = .7, alpha = .8) +
+      geom_line(data = flow_base,
+                aes(comb_date, flow_acft * k, colour = station),
+                size = .7, alpha = .8)+
     scale_y_continuous(
       name     = "Number of Trees",
       sec.axis = sec_axis(~ . / k,
@@ -166,19 +160,20 @@ plot_tree_vs_runoff <- function(tree_df,
   k <- max(tree_cnt$n_trees, na.rm = TRUE) /
        max(runoff_base$ovr_acft, na.rm = TRUE)
 
-  runoff_plot <- runoff_base %>%
-    mutate(run_scaled = ovr_acft * k) %>%
-    tidyr::crossing(strata_clone = facets)
+  # runoff_plot <- runoff_base %>%
+  #   mutate(run_scaled = ovr_acft * k) %>%
+  #   tidyr::crossing(strata_clone = facets)
 
   ggplot() +
     geom_col(data = tree_cnt,
              aes(comb_date, n_trees, fill = strata_clone),
              width = binwidth, colour = "black") +
 
-    geom_line(data = runoff_plot,
-              aes(comb_date, run_scaled),
-              colour = "black", size = .9) +
-
+    # geom_line(data = runoff_plot,
+    #           aes(comb_date, run_scaled),
+    #           colour = "black", size = .9) +
+    geom_line(data = runoff_base,
+                aes(comb_date, ovr_acft * k), colour = "black", size = .9)+
     scale_y_continuous(
       name     = "Number of Trees",
       sec.axis = sec_axis(~ . / k,

@@ -1,4 +1,25 @@
-.Rproj.user
+/data/data_0825/
+
+.DS_Store
+Thumbs.db
+
+# R / RStudio
+.Rproj.user/
 .Rhistory
 .RData
 .Ruserdata
+.Renviron
+.Rprofile
+
+# Quarto / Rmd artifacts (outside docs/)
+*_cache/
+*_files/
+*.utf8.md
+*.knit.md
+_site/
+.quarto/
+
+# Execution cache (optional to keep; ignore to keep repo light)
+_freeze/
+
+/.quarto/

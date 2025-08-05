@@ -1,0 +1,26 @@
+project:
+  type: website
+  output-dir: docs         # GitHub Pages will serve from /docs
+
+website:
+  title: "Riparian Hydro-Ecology"
+  navbar:
+    left:
+      - text: Home
+        href: index.qmd
+      - text: Plots
+        href: riparian.qmd
+  page-footer: "© Inyo County Water Department"
+
+format:
+  html:
+    code-fold: true        # collapsible code (chunk labels will be used as captions)
+    toc: false
+    self-contained: true   # single-file HTMLs (great for offline viewing)
+
+execute:
+  echo: true
+  warning: false
+  message: false
+  freeze: auto             # only rebuild pages that changed
+

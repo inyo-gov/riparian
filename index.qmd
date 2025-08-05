@@ -1,0 +1,8 @@
+---
+title: "Home"
+---
+
+Welcome! Use the **Plots** tab to view the riparian recruitment & hydrograph overlays.
+
+- Data: in `/data`
+- Source: `riparian.qmd`
